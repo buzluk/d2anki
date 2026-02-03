@@ -117,7 +117,7 @@ public class OxfordHtmlParser {
 
     private Meaning parseSingleMeaning() {
         Element senseSingle = selectFirstSafely(mainContent, "div.entry > ol.sense_single  li.sense");
-        Element def = selectFirstSafely(senseSingle, "span.sensetop > span.def");
+        Element def = selectFirstSafely(senseSingle, "span.def");
         if (def == null) return null;
         String definition = textSafely(def);
         Element examples = selectFirstSafely(senseSingle, "> ul.examples");
