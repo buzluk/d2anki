@@ -4,4 +4,8 @@ public class WordFetchException extends RuntimeException {
     public WordFetchException(String message, Throwable cause) {
         super(message, cause);
     }
+
+    public WordFetchException(String message) {
+        super(message);
+    }
 }

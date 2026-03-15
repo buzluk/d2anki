@@ -1,7 +1,15 @@
 package com.github.buzluk.d2anki;
 
+import com.github.buzluk.d2anki.client.AsyncHttpClient;
+import com.github.buzluk.d2anki.client.D2AnkiHttpClient;
 import com.github.buzluk.d2anki.config.AppConfig;
 import com.github.buzluk.d2anki.exception.WordFetchException;
+import com.github.buzluk.d2anki.exporter.TsvExporter;
+import com.github.buzluk.d2anki.exporter.WordExporter;
+import com.github.buzluk.d2anki.service.AudioDownloader;
+import com.github.buzluk.d2anki.service.FailureReporter;
+import com.github.buzluk.d2anki.service.FileWordProvider;
+import com.github.buzluk.d2anki.service.ResourceCsvWordProvider;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -17,13 +25,25 @@ public class Main {
         AppConfig config = AppConfig.defaults();
         Path inputFilePath = resolveInputFile(args, config.defaultInputFile());
 
-        if (!validateInputFile(inputFilePath)) {
+        if (!validateInputFile(inputFilePath) && args != null && args.length > 0) { // Only validate if a file was explicitly provided
             System.exit(1);
         }
 
-        try {
-            D2AnkiApplication application = D2AnkiApplication.create(config);
-            application.run(inputFilePath);
+        try (D2AnkiHttpClient client = new AsyncHttpClient(config.maxConcurrentRequests())) { // Use D2AnkiHttpClient interface here
+            AudioDownloader audioDownloader = new AudioDownloader(client, config.mediaOutputDir());
+            WordExporter wordExporter = new TsvExporter(config.outputFilePath());
+            FailureReporter failureReporter = new FailureReporter(config.failedLogFilePath()); // Correct constructor for FailureReporter
+
+            D2AnkiApplication application;
+            if (args != null && args.length > 0) {
+                FileWordProvider fileWordProvider = new FileWordProvider(client, inputFilePath);
+                application = new DefaultFileD2AnkiApplication(fileWordProvider, wordExporter, audioDownloader, failureReporter, client);
+            } else {
+                log.info("Using default Oxford 5000 CEFR word list.");
+                ResourceCsvWordProvider resourceCsvWordProvider = new ResourceCsvWordProvider(client);
+                application = new OxfordD2AnkiApplication(resourceCsvWordProvider, wordExporter, audioDownloader, failureReporter, client);
+            }
+            application.run(); // No inputFilePath parameter anymore
             System.exit(0);
         } catch (WordFetchException e) {
             log.error("Failed to fetch word definitions: {}", e.getMessage());

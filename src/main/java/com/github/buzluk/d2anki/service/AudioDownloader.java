@@ -1,6 +1,6 @@
 package com.github.buzluk.d2anki.service;
 
-import com.github.buzluk.d2anki.client.AsyncHttpClient;
+import com.github.buzluk.d2anki.client.D2AnkiHttpClient;
 import com.github.buzluk.d2anki.client.request.FileDownloadRequest;
 import com.github.buzluk.d2anki.model.Pronunciation;
 import com.github.buzluk.d2anki.model.Word;
@@ -16,7 +16,7 @@ import java.util.Collection;
 @RequiredArgsConstructor
 public class AudioDownloader {
 
-    private final AsyncHttpClient client;
+    private final D2AnkiHttpClient client;
     private final Path mediaOutputDir;
 
     public void downloadAudioFiles(Collection<Word> words) {

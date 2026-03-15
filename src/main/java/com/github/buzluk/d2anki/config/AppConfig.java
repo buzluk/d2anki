@@ -6,7 +6,8 @@ public record AppConfig(
         Path mediaOutputDir,
         Path outputFilePath,
         Path failedLogFilePath,
-        String defaultInputFile
+        String defaultInputFile,
+        int maxConcurrentRequests
 ) {
 
     public static AppConfig defaults() {
@@ -14,7 +15,8 @@ public record AppConfig(
                 Path.of("collection.media"),
                 Path.of("output.tsv"),
                 Path.of("failed_request.txt"),
-                "words.txt"
+                "words.txt",
+                10 // Default value for maxConcurrentRequests
         );
     }
 }

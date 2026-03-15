@@ -14,11 +14,11 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 @Slf4j
-public class AsyncHttpClient {
-    private static final int MAX_CONCURRENT_REQUESTS = 10;
+public class AsyncHttpClient implements D2AnkiHttpClient {
 
     private final HttpClient client;
     private final Semaphore semaphore;
@@ -31,22 +31,25 @@ public class AsyncHttpClient {
     private final AtomicInteger consecutiveCriticalFailures = new AtomicInteger(0);
     private volatile boolean isThrottled = false;
 
-    public AsyncHttpClient() {
-        log.info("Initializing AsyncHttpClient. Max Concurrent: {}, Timeout: 10s", MAX_CONCURRENT_REQUESTS);
+    private final ExecutorService executor; // Added field
+    private final Thread dispatcherThread; // Added field
 
-        ExecutorService executor = Executors.newCachedThreadPool();
+    public AsyncHttpClient(int maxConcurrentRequests) {
+        log.info("Initializing AsyncHttpClient. Max Concurrent: {}, Timeout: 10s", maxConcurrentRequests);
+
+        this.executor = Executors.newCachedThreadPool();
         this.client = HttpClient.newBuilder()
-                .executor(executor)
+                .executor(this.executor)
                 .followRedirects(HttpClient.Redirect.ALWAYS)
                 .connectTimeout(Duration.ofSeconds(10))
                 .version(HttpClient.Version.HTTP_2)
                 .build();
 
-        this.semaphore = new Semaphore(MAX_CONCURRENT_REQUESTS);
+        this.semaphore = new Semaphore(maxConcurrentRequests);
 
-        Thread dispatcherThread = new Thread(this::processQueueLoop);
-        dispatcherThread.setName("AsyncHttpClient-Dispatcher");
-        dispatcherThread.start();
+        this.dispatcherThread = new Thread(this::processQueueLoop);
+        this.dispatcherThread.setName("AsyncHttpClient-Dispatcher");
+        this.dispatcherThread.start();
 
         log.debug("Dispatcher thread started.");
     }
@@ -87,7 +90,7 @@ public class AsyncHttpClient {
                 log.debug("Dispatching request for '{}'. Retry count remaining: {}", request, request.getRetryCount());
                 sendAsync(request);
 
-            } catch (InterruptedException _) {
+            } catch (InterruptedException e) {
                 log.warn("Dispatcher thread interrupted. Stopping loop.");
                 Thread.currentThread().interrupt();
             }
@@ -179,7 +182,7 @@ public class AsyncHttpClient {
 
             log.warn("Applying dynamic backoff: {}ms due to {} consecutive failures.", backoff, fails);
             Thread.sleep(backoff);
-        } catch (InterruptedException _) {
+        } catch (InterruptedException e) {
             log.error("Interrupted during backoff sleep.");
             Thread.currentThread().interrupt();
         }
@@ -192,7 +195,7 @@ public class AsyncHttpClient {
                 try {
                     log.debug("Waiting... Active: {}, Queue: {}", activeTaskCount.get(), requestQueue.size());
                     termination.wait(2000);
-                } catch (InterruptedException _) {
+                } catch (InterruptedException e) {
                     log.error("WaitForFinish interrupted.");
                     Thread.currentThread().interrupt();
                     break;
@@ -204,5 +207,36 @@ public class AsyncHttpClient {
 
     public List<AsyncHttpRequest<?>> getFailedRequests() {
         return new ArrayList<>(failedRequests);
+    }
+
+    @Override
+    public void close() {
+        log.info("Shutting down AsyncHttpClient...");
+        // Interrupt the dispatcher thread
+        if (dispatcherThread != null) {
+            dispatcherThread.interrupt();
+            try {
+                dispatcherThread.join(5000); // Wait for the thread to finish, up to 5 seconds
+            } catch (InterruptedException e) {
+                log.warn("Interrupted while waiting for dispatcher thread to terminate.", e);
+                Thread.currentThread().interrupt();
+            }
+        }
+
+        // Shut down the executor service
+        if (executor != null) {
+            executor.shutdown();
+            try {
+                if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
+                    log.warn("Executor did not terminate in time. Forcibly shutting down.");
+                    executor.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                log.warn("Interrupted while waiting for executor to terminate.", e);
+                executor.shutdownNow();
+                Thread.currentThread().interrupt();
+            }
+        }
+        log.info("AsyncHttpClient shutdown complete.");
     }
 }

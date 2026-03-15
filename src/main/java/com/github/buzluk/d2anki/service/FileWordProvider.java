@@ -1,6 +1,6 @@
 package com.github.buzluk.d2anki.service;
 
-import com.github.buzluk.d2anki.client.AsyncHttpClient;
+import com.github.buzluk.d2anki.client.D2AnkiHttpClient;
 import com.github.buzluk.d2anki.client.request.SearchingWordRequest;
 import com.github.buzluk.d2anki.exception.WordFetchException;
 import com.github.buzluk.d2anki.model.Word;
@@ -17,11 +17,13 @@ import java.util.stream.Stream;
 
 @Slf4j
 @RequiredArgsConstructor
-public class WordFetcher {
+public class FileWordProvider implements WordProvider {
 
-    private final AsyncHttpClient client;
+    private final D2AnkiHttpClient client;
+    private final Path inputFilePath;
 
-    public Collection<Word> fetchFromFile(Path inputFilePath) {
+    @Override
+    public Collection<Word> fetchWords() {
         Collection<Word> fetchedWords = new ConcurrentLinkedQueue<>();
 
         log.info("Reading words from '{}'...", inputFilePath);
@@ -42,6 +44,4 @@ public class WordFetcher {
 
         return fetchedWords;
     }
-    
 }
-
